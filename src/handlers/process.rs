@@ -182,7 +182,9 @@ impl AgentInterface for Agent {
                 log::debug!("[execute] url :{}:", llama_url);
                 let llama_payload = get_llama_payload(prompt);
                 log::debug!("payload {}", llama_payload);
-                let client = reqwest::Client::new();
+                let client = reqwest::Client::builder()
+                    .danger_accept_invalid_certs(true)
+                    .build()?;
                 let mut headers = HeaderMap::new();
                 headers.insert(USER_AGENT, HeaderValue::from_static("reqwest"));
                 headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
