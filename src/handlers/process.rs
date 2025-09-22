@@ -2,7 +2,6 @@ use crate::config::load::Parameters;
 use crate::handlers::common::get_error;
 use crate::handlers::document::{Document, DocumentformInterface};
 use custom_logger as log;
-use http::StatusCode;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
@@ -180,7 +179,7 @@ impl AgentInterface for Agent {
             false => {
                 log::info!("mode: execute");
                 let llama_url = format!("{}", params.base_url);
-                log::debug!("[execute] url {}", llama_url);
+                log::debug!("[execute] url :{}:", llama_url);
                 let llama_payload = get_llama_payload(prompt);
                 log::debug!("payload {}", llama_payload);
                 let client = reqwest::Client::new();
@@ -192,22 +191,24 @@ impl AgentInterface for Agent {
                     .headers(headers)
                     .body(llama_payload)
                     .send()
-                    .await?;
-                match res.status() {
-                    StatusCode::OK => {
+                    .await;
+                match res {
+                    Ok(data) => {
                         log::debug!("[execute] waiting for body");
-                        let data_result = res.bytes().await?;
-                        log::debug!(
-                            "[execute] body received {}",
-                            String::from_utf8(data_result.to_vec()).unwrap(),
-                        );
-                        let llama: LlamaResponse = serde_json::from_slice(&data_result)?;
-                        let llama_document = llama.content.clone();
-                        log::info!("result from llama\n\n {}", llama_document);
-                        Document::save_formdata(db_path, key, llama_document).await?;
-                        Ok("exit => 0".to_string())
+                        let data_result = data.bytes().await;
+                        log::debug!("[execute] received body");
+                        if data_result.is_ok() {
+                            let llama: LlamaResponse =
+                                serde_json::from_slice(&data_result.unwrap())?;
+                            let llama_document = llama.content.clone();
+                            log::info!("result from llama\n\n {}", llama_document);
+                            Document::save_formdata(db_path, key, llama_document).await?;
+                            Ok("exit => 0".to_string())
+                        } else {
+                            Err(get_error("[execute] body data error".to_string()))
+                        }
                     }
-                    _ => Err(get_error(format!("error occured {}", res.status()))),
+                    Err(e) => Err(get_error(format!("error occured {}", e.to_string()))),
                 }
             }
         }
@@ -220,7 +221,7 @@ fn get_llama_payload(prompt: String) -> String {
         .map(|v| v.to_string())
         .collect::<Vec<String>>();
     let data = format!(
-        r#"{{"prompt": "{}" , "n_predict": 128}}"#,
+        r#"{{"prompt": "{}","n_predict": 128}}"#,
         formatted.join(" ")
     );
     data
