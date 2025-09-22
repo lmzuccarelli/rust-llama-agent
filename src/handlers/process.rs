@@ -3,6 +3,7 @@ use crate::handlers::common::get_error;
 use crate::handlers::document::{Document, DocumentformInterface};
 use custom_logger as log;
 use http::StatusCode;
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -183,7 +184,15 @@ impl AgentInterface for Agent {
                 let llama_payload = get_llama_payload(prompt);
                 log::debug!("payload {}", llama_payload);
                 let client = reqwest::Client::new();
-                let res = client.post(llama_url).body(llama_payload).send().await?;
+                let mut headers = HeaderMap::new();
+                headers.insert(USER_AGENT, HeaderValue::from_static("reqwest"));
+                headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+                let res = client
+                    .post(llama_url)
+                    .headers(headers)
+                    .body(llama_payload)
+                    .send()
+                    .await?;
                 match res.status() {
                     StatusCode::OK => {
                         log::debug!("[execute] waiting for body");
@@ -208,9 +217,7 @@ impl AgentInterface for Agent {
 fn get_llama_payload(prompt: String) -> String {
     let payload = format!(
         r#"
-    {{
-        "prompt": "{}" , "n_predict": 128 
-    }}"#,
+    {{ "prompt": "{}" , "n_predict": 128 }}"#,
         prompt
     );
     payload
