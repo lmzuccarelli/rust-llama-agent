@@ -162,7 +162,7 @@ impl AgentInterface for Agent {
     ) -> Result<String, Box<dyn std::error::Error>> {
         let db_path = params.db_path.clone();
         let fd = Document::get_formdata(format!("{}/queue", db_path.clone()), key.clone()).await?;
-        log::debug!("[execute] gemini agent {:?}", fd);
+        log::debug!("[execute] llama agent {:?}", fd);
         let prompt = fd.prompt;
         let data = match params.test {
             true => {
@@ -173,13 +173,19 @@ impl AgentInterface for Agent {
                 log::info!("mode: execute");
                 let llama_url = format!("{}", params.base_url);
                 log::debug!("[execute] url {}", llama_url);
-                let gemini_payload = get_gemini_payload(prompt);
-                log::debug!("payload {}", gemini_payload);
+                let llama_payload = get_llama_payload(prompt);
+                log::debug!("payload {}", llama_payload);
                 let client = reqwest::Client::new();
-                let res = client.post(llama_url).body(gemini_payload).send().await;
+                let res = client.post(llama_url).body(llama_payload).send().await;
+                log::debug!("[execute] headers received");
                 match res {
                     Ok(data) => {
+                        log::debug!("[execute] waiting for body");
                         let data_result = data.bytes().await?;
+                        log::debug!(
+                            "[execute] body received {}",
+                            String::from_utf8(data_result.to_vec()).unwrap(),
+                        );
                         data_result.to_vec()
                     }
                     Err(_) => {
@@ -196,7 +202,7 @@ impl AgentInterface for Agent {
     }
 }
 
-fn get_gemini_payload(prompt: String) -> String {
+fn get_llama_payload(prompt: String) -> String {
     let payload = format!(
         r#"
     {{
