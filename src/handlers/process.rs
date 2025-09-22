@@ -1,6 +1,8 @@
 use crate::config::load::Parameters;
+use crate::handlers::common::get_error;
 use crate::handlers::document::{Document, DocumentformInterface};
 use custom_logger as log;
+use http::StatusCode;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -164,10 +166,15 @@ impl AgentInterface for Agent {
         let fd = Document::get_formdata(format!("{}/queue", db_path.clone()), key.clone()).await?;
         log::debug!("[execute] llama agent {:?}", fd);
         let prompt = fd.prompt;
-        let data = match params.test {
+        match params.test {
             true => {
                 log::info!("mode: test");
-                fs::read("/home/lzuccarelli/Projects/rust-llama-agent/docs/example-response.json")?
+                let data = fs::read(
+                    "/home/lzuccarelli/Projects/rust-llama-agent/docs/example-response.json",
+                )?;
+                let llama: LlamaResponse = serde_json::from_slice(&data)?;
+                log::debug!("[execute] result from test {:?}", llama);
+                Ok("exit =>".to_string())
             }
             false => {
                 log::info!("mode: execute");
@@ -176,29 +183,25 @@ impl AgentInterface for Agent {
                 let llama_payload = get_llama_payload(prompt);
                 log::debug!("payload {}", llama_payload);
                 let client = reqwest::Client::new();
-                let res = client.post(llama_url).body(llama_payload).send().await;
-                log::debug!("[execute] headers received");
-                match res {
-                    Ok(data) => {
+                let res = client.post(llama_url).body(llama_payload).send().await?;
+                match res.status() {
+                    StatusCode::OK => {
                         log::debug!("[execute] waiting for body");
-                        let data_result = data.bytes().await?;
+                        let data_result = res.bytes().await?;
                         log::debug!(
                             "[execute] body received {}",
                             String::from_utf8(data_result.to_vec()).unwrap(),
                         );
-                        data_result.to_vec()
+                        let llama: LlamaResponse = serde_json::from_slice(&data_result)?;
+                        let llama_document = llama.content.clone();
+                        log::info!("result from llama\n\n {}", llama_document);
+                        Document::save_formdata(db_path, key, llama_document).await?;
+                        Ok("exit => 0".to_string())
                     }
-                    Err(_) => {
-                        vec![]
-                    }
+                    _ => Err(get_error(format!("error occured {}", res.status()))),
                 }
             }
-        };
-        let llama: LlamaResponse = serde_json::from_slice(&data)?;
-        let llama_document = llama.content.clone();
-        log::info!("result from llama\n\n {}", llama_document);
-        Document::save_formdata(db_path, key, llama_document).await?;
-        Ok("exit => 0".to_string())
+        }
     }
 }
 
