@@ -215,10 +215,13 @@ impl AgentInterface for Agent {
 }
 
 fn get_llama_payload(prompt: String) -> String {
-    let payload = format!(
-        r#"
-    {{ "prompt": "{}" , "n_predict": 128 }}"#,
-        prompt
+    let formatted = prompt
+        .split_whitespace()
+        .map(|v| v.to_string())
+        .collect::<Vec<String>>();
+    let data = format!(
+        r#"{{"prompt": "{}" , "n_predict": 128}}"#,
+        formatted.join(" ")
     );
-    payload
+    data
 }
